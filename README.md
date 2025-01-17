@@ -16,6 +16,7 @@ The lower our cross-section thickness, the more precise our portions will be.
 360mm loaf length = 3600 cross-sections at 0.1mm thickness
 
 # User-Interface
-![image](https://github.com/user-attachments/assets/cd6defe0-a916-4995-aa89-30406afc61c0)
+![image](https://github.com/user-attachments/assets/8a68f1ad-eb71-47a3-952b-99d5fa5eaa37)
 ![image](https://github.com/user-attachments/assets/80e1a9af-6d69-43fc-9ac8-f17d24c7d171)
+![image](https://github.com/user-attachments/assets/f183a1c9-d0be-42ed-bb54-17aa1f387e9d)
 
