@@ -3,119 +3,20 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter.messagebox import showinfo
 import random
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 import numpy as np
 
-def plot_portioning_visualization(cross_sectional_areas, slice_thickness, density, portions, waste_portion, include_waste):
-    # Calculate slice weights and cumulative values
-    slice_weights = [area * slice_thickness * density for area in cross_sectional_areas]
-    n = len(cross_sectional_areas)
-    cum_length = np.arange(1, n + 1) * slice_thickness  # in mm
-    cum_weight = np.cumsum(slice_weights)               # in grams
-
-    # Total loaf length from the integration curve
-    total_loaf_length = cum_length[-1]
-
-    # Create a figure with two subplots (stacked vertically)
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
-    plt.tight_layout(pad=4)
-
-    # --- Subplot 1: Cumulative Integration Plot ---
-    ax1.plot(cum_length, cum_weight, label="Cumulative Weight (g)", marker="o", color="blue")
-    
-    # Mark portion boundaries on the cumulative plot.
-    for (start, end, portion_length, portion_weight) in portions:
-        # Use the end index to define the cut (assuming the slice index is 0-based).
-        cut_position = (end + 1) * slice_thickness
-        ax1.axvline(cut_position, color="red", linestyle="--", alpha=0.7)
-        # Optionally, annotate the portion on the curve.
-        mid_position = (start * slice_thickness + cut_position) / 2
-        # Find cumulative weight at end index (or last if out of range)
-        weight_at_cut = cum_weight[end] if end < len(cum_weight) else cum_weight[-1]
-        ax1.text(mid_position, weight_at_cut, 
-                 f"P{portions.index((start, end, portion_length, portion_weight)) + 1}\n{portion_weight:.1f}g",
-                 ha="center", va="bottom", fontsize=9, rotation=45)
-    
-    ax1.set_xlabel("Cumulative Length (mm)")
-    ax1.set_ylabel("Cumulative Weight (g)")
-    ax1.set_title("Cumulative Integration with Portion Cuts")
-    ax1.legend()
-    ax1.grid(True)
-
-    # --- Subplot 2: Schematic Loaf Diagram ---
-    # Draw the overall loaf as a light blue rectangle.
-    # Here we fix the height of the schematic to, say, 50 mm.
-    schematic_height = 50
-    ax2.add_patch(Rectangle((0, 0), total_loaf_length, schematic_height,
-                            edgecolor="black", facecolor="lightblue"))
-    
-    # Now, overlay each portion as an orange segment.
-    current_x = 0
-    for i, (start, end, portion_length, portion_weight) in enumerate(portions):
-        # Draw the portion as a rectangle
-        ax2.add_patch(Rectangle((current_x, 0), portion_length, schematic_height,
-                                edgecolor="black", facecolor="orange", alpha=0.7))
-        # Annotate the portion in the center
-        mid_x = current_x + portion_length / 2
-        ax2.text(mid_x, schematic_height / 2, 
-                 f"P{i+1}\n{portion_weight:.1f}g\n{portion_length:.1f}mm",
-                 ha="center", va="center", fontsize=9, rotation=45, color="black")
-        current_x += portion_length
-
-    # If there's waste and it is not included, show it as a red segment.
-    if waste_portion and not include_waste:
-        waste_length = waste_portion[2]
-        ax2.add_patch(Rectangle((current_x, 0), waste_length, schematic_height,
-                                edgecolor="black", facecolor="red", alpha=0.5))
-        mid_x = current_x + waste_length / 2
-        ax2.text(mid_x, schematic_height / 2,
-                 f"Waste\n{waste_portion[3]:.1f}g",
-                 ha="center", va="center", fontsize=9, color="white", rotation=45)
-        current_x += waste_length
-
-    # Set limits and title for schematic
-    ax2.set_xlim(0, total_loaf_length)
-    ax2.set_ylim(0, schematic_height)
-    ax2.set_title("Schematic Cheese Loaf with Portioning")
-    ax2.set_xlabel("Loaf Length (mm)")
-    ax2.axis("off")  # Hide axis lines and labels for a cleaner schematic
-
-
-# UK three packers rule - https://www.stevenstraceability.com/average-weight-explained/
-# TNE Calculation Based on TNE Table
-def get_tne(nominal_weight):
-    if 5 <= nominal_weight <= 50:
-        return nominal_weight * 0.09  # 9% of nominal weight
-    elif 50 < nominal_weight <= 100:
-        return 4.5  # Fixed 4.5 g
-    elif 100 < nominal_weight <= 200:
-        return nominal_weight * 0.045  # 4.5%
-    elif 200 < nominal_weight <= 300:
-        return 9  # Fixed 9 g
-    elif 300 < nominal_weight <= 500:
-        return nominal_weight * 0.03  # 3%
-    elif 500 < nominal_weight <= 1000:
-        return 15  # Fixed 15 g
-    elif 1000 < nominal_weight <= 10000:
-        return nominal_weight * 0.015  # 1.5%
-    elif 10000 < nominal_weight <= 15000:
-        return 150  # Fixed 150 g
-    elif nominal_weight > 15000:
-        return nominal_weight * 0.01  # 1%
-    else:
-        return 0
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+import matplotlib
+matplotlib.use("TkAgg")
 
 def calculate():
     try:
-
         global target_portion_weight
         global include_waste
         global current_weight
-        global waste
         global waste_portion
-        global t1_tolerance
-        global t2_tolerance
+        global waste
 
         # Get inputs
         total_weight = float(total_weight_var.get())
@@ -125,102 +26,153 @@ def calculate():
         average_height = float(average_height_var.get())
         number_of_length_cross_sections = int(number_of_slices_var.get())
         include_waste = include_waste_var.get()
+        linear_Interpolation = use_linear_Interpolation.get()
         tolerance = tolerance_var.get() / 100
 
-        # Generate cross-sectional areas
-        cross_sectional_areas = [
-            (random.gauss(average_width, 2)) * (random.gauss(average_height, 2))
-            for _ in range(number_of_length_cross_sections)
-        ]
-
-        # Calculate density using rectangular rule
-        #total_volume = sum(area * slice_thickness for area in cross_sectional_areas)
-        #density = total_weight / total_volume
-
-        # Suppose cross_sectional_areas is a list of the areas for each slice.
-        # Calculate volume using the trapezoidal rule:
-        volumes = [(slice_thickness / 2) * (cross_sectional_areas[i] + cross_sectional_areas[i+1])
-            for i in range(len(cross_sectional_areas) - 1)]
-
-        total_volume = sum(volumes)
+        # Generate dimensions (width, height) for each slice.
+        dims = generate_dimensions(number_of_length_cross_sections, average_width, average_height)
+        # Extract real heights.
+        real_heights = dims[:, 1]
+        # Compute cross-sectional areas from these dimensions.
+        cross_sectional_areas = dims[:, 0] * dims[:, 1]
+        
+        # Compute density using the trapezoidal rule.
+        volumes = np.array([
+            (slice_thickness / 2) * (cross_sectional_areas[i] + cross_sectional_areas[i+1])
+            for i in range(len(cross_sectional_areas) - 1)
+        ])
+        total_volume = np.sum(volumes)
         density = total_weight / total_volume
 
-        # Portion calculation
-        portions = []
-        current_weight = 0
-        current_length = 0
-        start_index = 0
+        # Calculate slice weights using density
         slice_weights = []
+        for id, area in enumerate(cross_sectional_areas):
+            weight = area * slice_thickness * density
+            slice_weights.append(weight)
 
-        for i, area in enumerate(cross_sectional_areas):
-            slice_weight = area * slice_thickness * density
-            slice_weights.append(slice_weight)
+        # Portion calculation in reverse order:
+        # We accumulate from the end of the scan backwards so that the leftover (waste)
+        # comes from the front (lowest slice indices).
+        portions = []  # Each portion: (start_index, end_index, portion_length, portion_weight)
+        current_weight = 0.0
+        current_length = 0.0
 
-        # Calculate portions using linear interpolation
-        for i, weight in enumerate(slice_weights):
-            # Add the current slice's weight and thickness
-            previous_weight = current_weight
-            previous_length = current_length
-            current_weight += weight
-            current_length += slice_thickness
+        # The current_end_index starts at the last slice index.
+        current_end_index = len(cross_sectional_areas) - 1
 
-            # Check if adding this slice causes an overshoot
-            if current_weight >= target_portion_weight * tolerance:
-                # Interpolate on the current slice:
-                overshoot = current_weight - (target_portion_weight * tolerance)
-                # Fraction of current slice needed to reach the target
-                fraction = (weight - overshoot) / weight if weight != 0 else 1
-                # Adjust current_length accordingly:
-                adjusted_length = previous_length + fraction * slice_thickness
-                adjusted_weight = previous_weight + fraction * weight
-                portions.append((start_index, i, adjusted_length, adjusted_weight))
-                # Start next portion with the remaining fraction of the slice:
-                remaining_fraction = 1 - fraction
-                current_weight = remaining_fraction * weight
-                current_length = remaining_fraction * slice_thickness
-                start_index = i
+        if linear_Interpolation:
+            # Process slices in reverse order.
+            for i in reversed(range(len(slice_weights))):
+                weight = slice_weights[i]
+                prev_weight = current_weight
+                prev_length = current_length
 
+                current_weight += weight
+                current_length += slice_thickness
+
+                # Check if the accumulated weight reaches the threshold
+                if current_weight >= target_portion_weight * tolerance:
+                    # Interpolate on the current slice:
+                    overshoot = current_weight - (target_portion_weight * tolerance)
+                    fraction = (weight - overshoot) / weight if weight != 0 else 1
+                    # Compute adjusted length: full slices plus the needed fraction of the current slice.
+                    # Adjust length and weight so that the portion exactly meets the threshold.
+                    adjusted_length = prev_length + fraction * slice_thickness
+                    adjusted_weight = prev_weight + fraction * weight
+                    # Record the portion: note that since we're iterating in reverse,
+                    # the portion covers slices from index i up to current_end_index.
+                    portions.append((i, current_end_index, adjusted_length, adjusted_weight))
+                    # Reset accumulators with the remaining fraction of the current slice.
+                    remaining_fraction = 1 - fraction
+                    current_weight = remaining_fraction * weight
+                    current_length = remaining_fraction * slice_thickness
+                    # Set new current_end_index to the slice before the current one.
+                    current_end_index = i - 1
+        else:
+                # Process slices in reverse order.
+                for i in reversed(range(len(slice_weights))):
+                    weight = slice_weights[i]
+                    current_weight += weight
+                    current_length += slice_thickness
+
+                    if current_weight >= target_portion_weight * tolerance:
+                        portions.append((i, current_end_index, current_length, current_weight))
+                        current_weight = 0.0
+                        current_length = 0.0
+                        current_end_index = i - 1
+
+
+        # After the loop, the remaining accumulated weight corresponds to waste.
+        # Calculate waste length: slices from 0 up to current_end_index plus any partial slice.
         waste = current_weight
+        waste_length = current_length
+        waste_portion = (0, current_end_index, waste_length, waste)
 
-        waste_portion = None
-        if waste > 0:
+        # Optionally, redistribute waste if enabled.
+        if include_waste and portions:
             waste_hypothetical = waste
-            waste_portion = (start_index, len(cross_sectional_areas) - 1, current_length, waste)
+            redistributed_weight = waste / len(portions)
+            new_portions = []
+            for start, end, length, weight in portions:
+                extra_length = (redistributed_weight / weight) * length if weight > 0 else 0
+                new_portions.append((start, end, length + extra_length, weight + redistributed_weight))
+            portions = new_portions
+            waste = 0
 
-            if include_waste:
-                redistributed_weight = waste / len(portions)
-                new_portions = []
-                for start, end, length, weight in portions:
-                    # If weight increases by redistributed_weight, then length should increase by:
-                    # extra_length = (redistributed_weight / weight) * length
-                    if weight > 0:
-                        extra_length = (redistributed_weight / weight) * length
-                        print(extra_length)
-                    else:
-                        extra_length = 0
-                    new_portions.append((start, end, length + extra_length, weight + redistributed_weight))
-                portions = new_portions
-                waste = 0
+        # Reverse portions to report in increasing slice order.
+        portions = portions[::-1]
+        
+        # Calculate the total loaf length
+        global total_loaf_length
+        total_loaf_length = len(cross_sectional_areas) * slice_thickness
 
+        # --- Insert the waste portion as Portion 0 in the portions list ---
+        if not include_waste and portions:
+            portions.insert(0, waste_portion)
 
-        plot_portioning_visualization(cross_sectional_areas, slice_thickness, density, portions, waste_portion, include_waste)
+        # UK three packers rule - https://www.stevenstraceability.com/average-weight-explained/
+        # TNE Calculation Based on TNE Table
+        def get_tne(nominal_weight):
+            if 5 <= nominal_weight <= 50:
+                return nominal_weight * 0.09  # 9% of nominal weight
+            elif 50 < nominal_weight <= 100:
+                return 4.5  # Fixed 4.5 g
+            elif 100 < nominal_weight <= 200:
+                return nominal_weight * 0.045  # 4.5%
+            elif 200 < nominal_weight <= 300:
+                return 9  # Fixed 9 g
+            elif 300 < nominal_weight <= 500:
+                return nominal_weight * 0.03  # 3%
+            elif 500 < nominal_weight <= 1000:
+                return 15  # Fixed 15 g
+            elif 1000 < nominal_weight <= 10000:
+                return nominal_weight * 0.015  # 1.5%
+            elif 10000 < nominal_weight <= 15000:
+                return 150  # Fixed 150 g
+            elif nominal_weight > 15000:
+                return nominal_weight * 0.01  # 1%
+            else:
+                return 0
 
         tne = get_tne(target_portion_weight)
+        global t1_tolerance
+        global t2_tolerance
         t1_tolerance = tne  # T1 = 1x TNE
         t2_tolerance = 2 * tne  # T2 = 2x TNE
 
+        start_index = 0 if waste_portion and include_waste else 1
         # Rule 1: Average weight must meet or exceed nominal weight
         valid_portions = portions[:-1] if waste_portion and not include_waste else portions
-        total_portion_weight = sum(weight for _, _, _, weight in valid_portions)
-        average_portion_weight = total_portion_weight / len(valid_portions)
+        total_portion_weight = sum(weight for _, _, _, weight in valid_portions[start_index:])
+        average_portion_weight = total_portion_weight / len(valid_portions[start_index:])
         rule1_pass = average_portion_weight >= target_portion_weight
 
         # Rule 2: No more than 2.5% of portions can fall below T1 tolerance
-        t1_violations = [weight for _, _, _, weight in valid_portions if weight < target_portion_weight - t1_tolerance]
-        rule2_pass = len(t1_violations) <= len(valid_portions) * 0.025
+        t1_violations = [weight for _, _, _, weight in valid_portions[start_index:] if weight < target_portion_weight - t1_tolerance]
+        rule2_pass = len(t1_violations) <= len(valid_portions[start_index:]) * 0.025
 
         # Rule 3: No portions can fall below T2 tolerance
-        t2_violations = [weight for _, _, _, weight in valid_portions if weight < target_portion_weight - t2_tolerance]
+        t2_violations = [weight for _, _, _, weight in valid_portions[start_index:] if weight < target_portion_weight - t2_tolerance]
         rule3_pass = len(t2_violations) == 0
 
         # Display Slice Weights in the first output box
@@ -240,24 +192,28 @@ def calculate():
         if not rule3_pass:
             cut_solution_output.insert(tk.END, f"  - T2 Violations: {len(t2_violations)}\n")
 
-        # Calculate the total loaf length
-        global total_loaf_length
-        total_loaf_length = sum(portion[2] for portion in portions)
-        if waste_portion and not include_waste:
-            total_loaf_length += waste_portion[2]  # Add waste length if waste is not included
 
         # Display total loaf length
         cut_solution_output.insert(tk.END, f"\nTotal Loaf Length: {total_loaf_length:.2f} mm\n")
 
         # Display portion details
         for idx, (start, end, length, weight) in enumerate(portions):
-            cut_solution_output.insert(tk.END,
-                f"\nPortion {idx + 1}:\n"
+            if portions and not include_waste and idx == 0:
+                cut_solution_output.insert(tk.END,
+                f"\nWaste Portion {idx + 1}:\n"
                 f"  Start Slice = {start}\n"
                 f"  End Slice = {end}\n"
                 f"  Length = {length:.2f} mm\n"
                 f"  Weight = {weight:.2f} g\n\n"
             )
+            else:
+                cut_solution_output.insert(tk.END,
+                    f"\nPortion {idx + 1}:\n"
+                    f"  Start Slice = {start}\n"
+                    f"  End Slice = {end}\n"
+                    f"  Length = {length:.2f} mm\n"
+                    f"  Weight = {weight:.2f} g\n\n"
+                )
 
         # Display waste details (if applicable)
         if waste_portion and not include_waste:
@@ -275,79 +231,80 @@ def calculate():
             cut_solution_output.insert(tk.END, f"\nTotal Waste: {waste:.2f} g\n")
 
         # Generate image for portions
-        generate_portion_image(portions, average_width, average_height, slice_thickness)
-
-        # Show the "View Graph" button
-        view_graph_button.grid()
-        plt.show()
+        generate_portion_image(portions, real_heights, slice_thickness)
         
     except ValueError:
         showinfo("Error", "Please enter valid numbers!")
 
 
-def generate_portion_image(portions, width, height, slice_thickness):
+def generate_dimensions(n_slices, avg_width, avg_height, width_std=2, height_std=2):
+    dims = [(random.gauss(avg_width, width_std), random.gauss(avg_height, height_std))
+        for _ in range(n_slices)]
+    return np.array(dims)
+
+def generate_portion_image(portions, real_heights, slice_thickness):
+    # Calculate the cumulative length array.
+    n = len(real_heights)
+    cum_length = np.arange(1, n + 1) * slice_thickness  # x-axis positions for each slice.
+    
+    # Calculate the average height for the overall loaf.
+    avg_height = np.mean(real_heights)
+    
+    # For the schematic, use the total length as sum of all slice thicknesses.
+    total_loaf_length = n * slice_thickness
+    
     fig, ax = plt.subplots(figsize=(12, 8))
-
-    # Draw the loaf
-    loaf_length = sum([p[2] for p in portions])
-    ax.add_patch(Rectangle((0, 0), loaf_length, height, edgecolor="black", facecolor="lightblue"))
-
-    # Draw the portions
+    
+    # Draw the overall loaf as a rectangle using the average height.
+    ax.add_patch(Rectangle((0, 0), total_loaf_length, avg_height,
+                            edgecolor="black", facecolor="lightblue"))
+    
+    # Overlay a line plot that shows the real height variation.
+    ax.plot(cum_length, real_heights, linestyle="--", color="purple",
+            label="Real Height Variation")
+    
+    # Optionally annotate the average height.
+    ax.axhline(avg_height, color="blue", linestyle=":", label=f"Avg Height = {avg_height:.2f} mm")
+    
+    # Draw the portions (we assume portions already include any waste handling as needed).
     current_x = 0
-    for idx, (_, _, length, weight) in enumerate(portions):
-        ax.add_patch(Rectangle((current_x, 0), length, height, edgecolor="black", facecolor="orange", alpha=0.7))
+    # Determine starting portion index. If the waste is included as Portion 0, start from index 1.
+    start_idx = 0
+    for idx, (start, end, length, weight) in enumerate(portions[start_idx:], start=start_idx):
+        # For each portion, you can compute an average height over its slice range:
+        portion_heights = real_heights[start:(end + 1)]
+        portion_avg_height = np.mean(portion_heights) if len(portion_heights) > 0 else avg_height
         
-        # Center the weight label
-        ax.text(
-            current_x + length / 2, height / 2, f"{weight:.2f} g\n" f"{length:.2f} mm",
-            ha="center", va="center", fontsize=8, color="black", rotation=90
-        )
+        if waste_portion and not include_waste and idx == 0:
+            # Draw the portion as a rectangle with height equal to its average real height.
+            ax.add_patch(Rectangle((current_x, 0), length, portion_avg_height,
+                                    edgecolor="black", facecolor="red", alpha=0.7))
+        else:
+            ax.add_patch(Rectangle((current_x, 0), length, portion_avg_height,
+                        edgecolor="black", facecolor="orange", alpha=0.7))
+
+        # Annotate the portion in the center.
+        mid_x = current_x + length / 2
+        ax.text(mid_x, portion_avg_height / 2, 
+                f"P{idx+1}: {weight:.1f} g\n{length:.1f} mm",
+                ha="center", va="center", fontsize=8, rotation=90)
         current_x += length
 
-    # Highlight waste
-    if waste_portion and not include_waste:
-        ax.add_patch(Rectangle((current_x, 0), waste_portion[2], height, edgecolor="black", facecolor="red", alpha=0.5))
-        ax.text(
-            current_x + waste_portion[2] / 2, height / 2, "Waste",
-            ha="center", va="center", fontsize=8, color="white", rotation=90
-        )
-        ax.text(
-            current_x + waste_portion[2] / 2 + 18, height / 2, f"{waste:.2f} g\n" f"{waste_portion[2]:.2f} mm",
-            ha="center", va="center", fontsize=8, color="black", rotation=90
-        )
-
-    # Add gridlines and target weight bands
-    for idx, (_, _, length, _) in enumerate(portions):
-        ax.axvline(current_x, color="gray", linestyle="--", linewidth=0.5)
-        current_x += length
-
-    ax.axhline(y=target_portion_weight - t1_tolerance, color="blue", linestyle="--", label="T1 Tolerance")
-    ax.axhline(y=target_portion_weight - t2_tolerance, color="red", linestyle="--", label="T2 Tolerance")
-    ax.axhline(y=target_portion_weight, color="green", linestyle="-", label="Target Weight")
-
-    # Add titles, labels, and legends
-    ax.set_title("Cheese Loaf Portioning Visualization", fontsize=14)
-    ax.set_xlabel("Length (mm)", fontsize=12)
-    ax.set_ylabel("Height (mm)", fontsize=12)
+    # Add gridlines and labels.
+    ax.set_title("Cheese Loaf Portioning Visualization\nwith Real Slice Height Variation", fontsize=14)
+    ax.set_xlabel("Cumulative Length (mm)", fontsize=12)
+    ax.set_ylabel("Slice Height (mm)", fontsize=12)
     ax.legend(loc="upper left")
     ax.grid(True)
-    ax.set_aspect("equal", adjustable="box")
+    
+    # Optionally, display the total loaf length.
+    ax.text(total_loaf_length / 2, -avg_height * 0.17,
+            f"Total Loaf Length: {total_loaf_length:.2f} mm",
+            ha="center", va="top", fontsize=12, color="black")
+    
+    print("here")
+    plt.show(block=True)
 
-    # Add total loaf length to the graph
-    ax.text(
-    loaf_length / 2, +120,  # Place it below the loaf
-    f"Total Loaf Length: {total_loaf_length:.2f} mm",
-    ha="center", va="top", fontsize=12, color="black"
-    )
-
-    # Save the image
-    plt.savefig("loaf_visualization.png")
-    #plt.show()
-
-
-# Function to open the generated graph
-def open_graph():
-    plt.show()
 
 # Function to show help dialog
 def show_help():
@@ -376,8 +333,10 @@ def show_help():
         "Visualization:\n"
         "- Generates an image showing the loaf and its portion positions with dimensions.\n\n"
         "Note:\n"
-        "- The widths and heights of slices are randomized to simulate realistic variations.\n"
-        "- Press calculate once desired inputs are entered.\n"
+        "- The widths and heights of slices are randomized to simulate realistic variations.\n\n"
+        "- Press calculate once desired inputs are entered.\n\n"
+        "- Linear interpolation in this context is used to determine what fraction of the current slice is needed to exactly reach (or closely approach) the target portion weight.\n"
+            "Instead of adding the entire weight of a slice, we “interpolate” within that slice so that we only take a fraction of it.\n"
     )
     showinfo("Help", help_text)
 
@@ -444,7 +403,8 @@ average_width_var = tk.StringVar(value="93")
 average_height_var = tk.StringVar(value="90")
 number_of_slices_var = tk.StringVar(value="3600")
 include_waste_var = tk.BooleanVar(value=False) 
-tolerance_var = tk.DoubleVar(value=99.9)  # Tolerance percentage (default 99.9%)
+use_linear_Interpolation = tk.BooleanVar(value=False)
+tolerance_var = tk.DoubleVar(value=100)  # Tolerance percentage (default 100%)
 
 # Create input fields
 fields = [
@@ -493,10 +453,15 @@ ttk.Checkbutton(
     app, text="Include Waste in Portions", variable=include_waste_var
 ).grid(row=len(fields) + 1, column=0, columnspan=3, pady=5, sticky="w")
 
+ttk.Checkbutton(
+    app, text="Use Linear Interpolation [ Info - Check Helper ]", variable=use_linear_Interpolation
+).grid(row=len(fields) + 2, column=0, columnspan=3, pady=5, sticky="w")
+
+
 # Scrollable text box for slice weights
-ttk.Label(app, text="Slice Weights:").grid(row=len(fields) + 2, column=0, columnspan=3, sticky=tk.W, padx=5, pady=(10, 0))
+ttk.Label(app, text="Slice Weights:").grid(row=len(fields) + 3, column=0, columnspan=3, sticky=tk.W, padx=5, pady=(10, 0))
 slice_output_frame = ttk.Frame(app)
-slice_output_frame.grid(row=len(fields) + 3, column=0, columnspan=3, padx=5, pady=5, sticky="nsew")
+slice_output_frame.grid(row=len(fields) + 4, column=0, columnspan=3, padx=5, pady=5, sticky="nsew")
 slice_output_scrollbar = ttk.Scrollbar(slice_output_frame)
 slice_output_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 slice_output = tk.Text(slice_output_frame, height=10, width=50, yscrollcommand=slice_output_scrollbar.set)
@@ -504,9 +469,9 @@ slice_output.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 slice_output_scrollbar.config(command=slice_output.yview)
 
 # Scrollable text box for cut solution
-ttk.Label(app, text="Cut Solution:").grid(row=len(fields) + 4, column=0, columnspan=3, sticky=tk.W, padx=5, pady=(10, 0))
+ttk.Label(app, text="Cut Solution:").grid(row=len(fields) + 5, column=0, columnspan=3, sticky=tk.W, padx=5, pady=(10, 0))
 cut_solution_frame = ttk.Frame(app)
-cut_solution_frame.grid(row=len(fields) + 5, column=0, columnspan=3, padx=5, pady=5, sticky="nsew")
+cut_solution_frame.grid(row=len(fields) + 6, column=0, columnspan=3, padx=5, pady=5, sticky="nsew")
 cut_solution_scrollbar = ttk.Scrollbar(cut_solution_frame)
 cut_solution_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 cut_solution_output = tk.Text(cut_solution_frame, height=10, width=50, yscrollcommand=cut_solution_scrollbar.set)
@@ -514,12 +479,7 @@ cut_solution_output.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 cut_solution_scrollbar.config(command=cut_solution_output.yview)
 
 # Calculate button
-ttk.Button(app, text="Calculate", command=calculate).grid(row=len(fields) + 6, column=0, columnspan=3, pady=10)
-
-# Button to open graph (initially hidden)
-view_graph_button = ttk.Button(app, text="View Visualization Graph", command=open_graph)
-view_graph_button.grid(row=len(fields) + 7, column=0, columnspan=3, pady=10)
-view_graph_button.grid_remove()  # Hide initially
+ttk.Button(app, text="Calculate", command=calculate).grid(row=len(fields) + 7, column=0, columnspan=3, pady=10)
 
 # Configure resizing
 app.grid_rowconfigure(len(fields) + 3, weight=1)
